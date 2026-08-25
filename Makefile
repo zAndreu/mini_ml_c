@@ -1,14 +1,19 @@
 CC = gcc
+
 CFLAGS = -Wall -Wextra -std=c11 -Iinclude -O2
 TARGET = bin/test
 LDFLAGS =
+
 SRCS = src/main.c src/matrix.c
+HEADERS = include/matrix.h
+
+.PHONY: all run clean
 
 all: $(TARGET)
 
-$(TARGET): $(SRCS)
+$(TARGET): $(SRCS) $(HEADERS)
 	mkdir -p bin
-	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS) $(SRCS) -o $@ $(LDFLAGS)
 
 run: $(TARGET)
 	./$(TARGET)

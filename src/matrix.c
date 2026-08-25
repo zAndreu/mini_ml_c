@@ -6,14 +6,27 @@
 #include "matrix.h"
 
 matrix *matrix_create(uint32_t rows, uint32_t cols) {
+    if (rows == 0 || cols == 0) {
+        return NULL;
+    }
     matrix *m = (matrix *)malloc(sizeof(matrix));
+    if (m == NULL) {
+        return NULL;
+    }
     m->rows = rows;
     m->cols = cols;
     m->data = (double *)malloc(rows * cols * sizeof(double));
+    if (m->data == NULL) {
+        free(m);
+        return NULL;
+    }
     return m;
 }
 
 void matrix_free(matrix *m) {
+    if (m == NULL) {
+        return;
+    }
     free(m->data);
     free(m);
 }
@@ -77,6 +90,9 @@ bool matrix_sub(const matrix *a, const matrix *b, matrix *result) {
     return true;
 }
 bool matrix_mult_scalar(const matrix *m, double scalar, matrix *result) {
+    if (m->rows != result->rows || m->cols != result->cols) {
+        return false;
+    }
     for (uint32_t x_row = 0; x_row < result->rows; x_row++) {
         for (uint32_t y_col = 0; y_col < result->cols; y_col++) {
             matrix_set(result, x_row, y_col, matrix_get(m, x_row, y_col) * scalar);
@@ -114,7 +130,7 @@ bool matrix_transpose(const matrix *m, matrix *result) {
     }
     for (uint32_t x_row = 0; x_row < m->rows; x_row++) {
         for (uint32_t y_col = 0; y_col < m->cols; y_col++) {
-            matrix_set(result, x_row, y_col, matrix_get(m, y_col, x_row));
+            matrix_set(result, y_col, x_row, matrix_get(m, x_row, y_col));
         }
     }
     return true;
@@ -147,6 +163,9 @@ bool matrix_add_row_vector(matrix *m, const matrix *row_vector) {
 }
 
 void matrix_apply_function(matrix *m, double (*func)(double)) {
+    if (func == NULL) {
+        return;
+    }
     for (uint32_t x_row = 0; x_row < m->rows; x_row++) {
         for (uint32_t y_col = 0; y_col < m->cols; y_col++) {
             matrix_set(m, x_row, y_col, func(matrix_get(m, x_row, y_col)));
@@ -184,7 +203,7 @@ double matrix_mean(const matrix *m) {
 void matrix_print(const matrix *m) {
     for (uint32_t x_row = 0; x_row < m->rows; x_row++) {
         for (uint32_t y_col = 0; y_col < m->cols; y_col++) {
-            printf("Elemento[%d,%d]: %lf ", x_row, y_col, matrix_get(m, x_row, y_col));
+            printf("Elemento[%u,%u]: %f ", x_row, y_col, matrix_get(m, x_row, y_col));
         }
         printf("\n");
     }
