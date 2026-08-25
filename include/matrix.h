@@ -42,4 +42,4 @@ void matrix_print(const matrix *m);
 uint32_t matrix_size(const matrix *m);
 
 #endif // MATRIX_H
-// End of file: include/matrix.h
+// End of file
