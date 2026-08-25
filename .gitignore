@@ -1,0 +1,17 @@
+*.exe
+*.out
+*.app
+
+*.o
+*.lo
+*.slo
+*.obj
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+
+build/
+Build/
+bin/   
