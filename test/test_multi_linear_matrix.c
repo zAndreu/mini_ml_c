@@ -3,55 +3,70 @@
 
 int main(void)
 {
-    double x_values[] = {
+    double x1_values[] = {
         0.0,
-        1.0,
-        2.0,
         3.0,
-        4.0,
+        2.0,
         5.0,
-        6.0,
         7.0,
+        6.0,
         8.0,
-        9.0
+        12.0,
+        10.0,
+        15.0,
+        14.0,
+        13.0,
+        19.0,
+        17.0,
+        16.0,
+        18.0,
+        21.0,
     };
 
-    double y_values[] = {
-        1.0,
-        3.0,
-        5.0,
-        7.0,
+    double x2_values[] = {
         9.0,
         11.0,
-        13.0,
-        15.0,
+        8.0,
+        10.0,
         17.0,
-        19.0
+        15.0,
+        14.0,
+        20.0,
+        18.0,
+        32.0,
+        30.0,
+        28.0,
+        25.0,
+        27.0,
+        29.0,
+        20.0,
+        22.0,
     };
+    double normalized_value = 40.0;
+    size_t samples = sizeof(x1_values) / sizeof(x1_values[0]);
 
-    size_t samples = sizeof(x_values) / sizeof(x_values[0]);
-
-    matrix *x = matrix_create(samples, 1);
+    matrix *x = matrix_create(samples, 2);
     matrix *y = matrix_create(samples, 1);
 
-    for(size_t idx = 0; idx < (size_t)samples; idx++) {
-        matrix_set(x, idx, 0, x_values[idx]);
-        matrix_set(y, idx, 0, y_values[idx]);
+    for (size_t idx = 0; idx < (size_t)samples; idx++) {
+        matrix_set(x, idx, 0, x1_values[idx] / normalized_value);
+        matrix_set(x, idx, 1, x2_values[idx] / normalized_value);
+        matrix_set(y, idx, 0, 2.0 * x1_values[idx] + 3.0 * x2_values[idx] + 5.0);
     }
 
-    matrix *x_transposed = matrix_create(1, samples);
+    matrix *x_transposed = matrix_create(2, samples);
     matrix_transpose(x, x_transposed);
 
-    matrix *weight = matrix_create(1, 1);
+    matrix *weight = matrix_create(2, 1);
     matrix_fill(weight, 0.0);
     matrix *bias = matrix_create(1, 1);
     matrix_fill(bias, 0.0);
 
-    matrix *gradient_weight = matrix_create(1, 1);
+    matrix *gradient_weight = matrix_create(2, 1);
     matrix *gradient_bias = matrix_create(1, 1);
 
     double learning_rate = 0.01;
-    size_t epochs = 1000;
+    size_t epochs = 10000;
 
     double total_loss = 0;
 
@@ -59,7 +74,7 @@ int main(void)
     matrix *error = matrix_create(samples, 1);
     matrix *squared_errors = matrix_create(samples, 1);
 
-    matrix *scaled_gradient_weight = matrix_create(1, 1);
+    matrix *scaled_gradient_weight = matrix_create(2, 1);
     matrix *scaled_gradient_bias = matrix_create(1, 1);
 
     double gradient_factor = 2.0 / (double)samples;
@@ -86,33 +101,32 @@ int main(void)
         matrix_mult_scalar(gradient_bias, learning_rate, scaled_gradient_bias);
         matrix_sub(bias, scaled_gradient_bias, bias);
 
-        if (epoch % 100 == 0 || epoch == epochs - 1) {
+        if (epoch % 500 == 0 || epoch == epochs - 1) {
             printf(
-                "Epoch %zu | Loss: %.10f | Weight: %.6f | Bias: %.6f\n",
+                "Epoch %zu | Loss: %.10f | Weight: %.6f | Weight: %.6f | Bias: %.6f\n",
                 epoch,
                 total_loss,
-                matrix_get(weight, 0, 0),
+                matrix_get(weight, 0, 0) / normalized_value,
+                matrix_get(weight, 1, 0) / normalized_value,
                 matrix_get(bias, 0, 0)
             );
         }
     }
 
-    printf("Peso final: %f\n", matrix_get(weight, 0, 0));
-    printf("Bias final: %f\n", matrix_get(bias, 0, 0));
+    printf("\nFinal Model Parameters:\n");
+    printf("Weight 1: %.6f\n", matrix_get(weight, 0, 0) / normalized_value);
+    printf("Weight 2: %.6f\n", matrix_get(weight, 1, 0) / normalized_value);
+    printf("Bias: %.6f\n", matrix_get(bias, 0, 0));
 
-    matrix *new_x = matrix_create(1, 1);
-    matrix *new_prediction = matrix_create(1, 1);
+    matrix *test_input = matrix_create(1, 2);
+    matrix_set(test_input, 0, 0, 10.0 / normalized_value);
+    matrix_set(test_input, 0, 1, 20.0 / normalized_value);
 
-    matrix_set(new_x, 0, 0, 10.0);
+    matrix *test_prediction = matrix_create(1, 1);
+    matrix_mult(test_input, weight, test_prediction);
+    matrix_add_row_vector(test_prediction, bias);
 
-    matrix_mult(new_x, weight, new_prediction);
-    matrix_add_row_vector(new_prediction, bias);
-
-    printf("Predicción para x = 10:\n");
-    matrix_print(new_prediction);
-
-    matrix_free(new_x);
-    matrix_free(new_prediction);
+    printf("\nTest Prediction for Input [10, 20]: %.6f\n", matrix_get(test_prediction, 0, 0));
 
     matrix_free(x);
     matrix_free(y);
