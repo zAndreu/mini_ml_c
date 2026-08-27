@@ -4,7 +4,8 @@
 #ifndef MATRIX_H
 #define MATRIX_H
 
-typedef struct {
+typedef struct
+{
     uint32_t rows;
     uint32_t cols;
     double *data;
@@ -19,7 +20,7 @@ double matrix_get(const matrix *m, uint32_t row, uint32_t col);
 void matrix_set(matrix *m, uint32_t row, uint32_t col, double value);
 
 void matrix_fill(matrix *m, double value);
-void matrix_random_fill(matrix *m, double min, double max);
+void matrix_fill_random(matrix *m, double min, double max);
 bool matrix_copy(const matrix *src, matrix *dest);
 
 // Operaciones con las matrices
@@ -42,4 +43,4 @@ void matrix_print(const matrix *m);
 uint32_t matrix_size(const matrix *m);
 
 #endif // MATRIX_H
-// End of file
+       // End of file

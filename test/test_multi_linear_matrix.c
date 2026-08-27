@@ -48,7 +48,8 @@ int main(void)
     matrix *x = matrix_create(samples, 2);
     matrix *y = matrix_create(samples, 1);
 
-    for (size_t idx = 0; idx < (size_t)samples; idx++) {
+    for (size_t idx = 0; idx < (size_t)samples; idx++)
+    {
         matrix_set(x, idx, 0, x1_values[idx] / normalized_value);
         matrix_set(x, idx, 1, x2_values[idx] / normalized_value);
         matrix_set(y, idx, 0, 2.0 * x1_values[idx] + 3.0 * x2_values[idx] + 5.0);
@@ -79,7 +80,8 @@ int main(void)
 
     double gradient_factor = 2.0 / (double)samples;
 
-    for (size_t epoch = 0; epoch < epochs; epoch++) {
+    for (size_t epoch = 0; epoch < epochs; epoch++)
+    {
         total_loss = 0;
         matrix_mult(x, weight, prediction);
         matrix_add_row_vector(prediction, bias);
@@ -90,7 +92,7 @@ int main(void)
 
         matrix_mult(x_transposed, error, gradient_weight);
         matrix_mult_scalar(gradient_weight, gradient_factor, gradient_weight);
-        
+
         matrix *sum_errors = matrix_sum_rows(error);
         matrix_mult_scalar(sum_errors, gradient_factor, gradient_bias);
         matrix_free(sum_errors);
@@ -101,15 +103,15 @@ int main(void)
         matrix_mult_scalar(gradient_bias, learning_rate, scaled_gradient_bias);
         matrix_sub(bias, scaled_gradient_bias, bias);
 
-        if (epoch % 500 == 0 || epoch == epochs - 1) {
+        if (epoch % 500 == 0 || epoch == epochs - 1)
+        {
             printf(
                 "Epoch %zu | Loss: %.10f | Weight: %.6f | Weight: %.6f | Bias: %.6f\n",
                 epoch,
                 total_loss,
                 matrix_get(weight, 0, 0) / normalized_value,
                 matrix_get(weight, 1, 0) / normalized_value,
-                matrix_get(bias, 0, 0)
-            );
+                matrix_get(bias, 0, 0));
         }
     }
 
@@ -140,6 +142,8 @@ int main(void)
     matrix_free(squared_errors);
     matrix_free(scaled_gradient_weight);
     matrix_free(scaled_gradient_bias);
+    matrix_free(test_input);
+    matrix_free(test_prediction);
 
     return 0;
 }

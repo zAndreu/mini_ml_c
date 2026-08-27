@@ -1,11 +1,11 @@
 CC = gcc
 
-CFLAGS = -Wall -Wextra -std=c11 -Iinclude -O2
+CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -Iinclude -g -O0 -fsanitize=address,undefined
 TARGET = bin/test
-LDFLAGS =
+LDFLAGS = -fsanitize=address,undefined -lm
 
-SRCS = src/main.c src/matrix.c
-HEADERS = include/matrix.h
+SRCS = src/main.c src/matrix.c src/mini_ml.c
+HEADERS = include/matrix.h include/mini_ml.h
 
 .PHONY: all run clean
 

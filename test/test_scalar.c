@@ -16,8 +16,7 @@ int main(void)
         6.0,
         7.0,
         8.0,
-        9.0
-    };
+        9.0};
 
     double y[] = {
         1.0,
@@ -29,8 +28,7 @@ int main(void)
         13.0,
         15.0,
         17.0,
-        19.0
-    };
+        19.0};
 
     size_t samples = sizeof(x) / sizeof(x[0]);
 
@@ -45,12 +43,14 @@ int main(void)
     double gradient_bias = 0;
     double prediction = 0;
 
-    for (size_t epoch = 0; epoch < epochs; epoch++) {
+    for (size_t epoch = 0; epoch < epochs; epoch++)
+    {
         total_loss = 0;
         gradient_weight = 0;
         gradient_bias = 0;
         prediction = 0;
-        for (size_t idx = 0; idx < samples; idx++) {
+        for (size_t idx = 0; idx < samples; idx++)
+        {
             prediction = weight * x[idx] + bias;
             double error = prediction - y[idx];
             total_loss += error * error;

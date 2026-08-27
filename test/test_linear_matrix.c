@@ -13,8 +13,7 @@ int main(void)
         6.0,
         7.0,
         8.0,
-        9.0
-    };
+        9.0};
 
     double y_values[] = {
         1.0,
@@ -26,15 +25,15 @@ int main(void)
         13.0,
         15.0,
         17.0,
-        19.0
-    };
+        19.0};
 
     size_t samples = sizeof(x_values) / sizeof(x_values[0]);
 
     matrix *x = matrix_create(samples, 1);
     matrix *y = matrix_create(samples, 1);
 
-    for(size_t idx = 0; idx < (size_t)samples; idx++) {
+    for (size_t idx = 0; idx < (size_t)samples; idx++)
+    {
         matrix_set(x, idx, 0, x_values[idx]);
         matrix_set(y, idx, 0, y_values[idx]);
     }
@@ -64,7 +63,8 @@ int main(void)
 
     double gradient_factor = 2.0 / (double)samples;
 
-    for (size_t epoch = 0; epoch < epochs; epoch++) {
+    for (size_t epoch = 0; epoch < epochs; epoch++)
+    {
         total_loss = 0;
         matrix_mult(x, weight, prediction);
         matrix_add_row_vector(prediction, bias);
@@ -75,7 +75,7 @@ int main(void)
 
         matrix_mult(x_transposed, error, gradient_weight);
         matrix_mult_scalar(gradient_weight, gradient_factor, gradient_weight);
-        
+
         matrix *sum_errors = matrix_sum_rows(error);
         matrix_mult_scalar(sum_errors, gradient_factor, gradient_bias);
         matrix_free(sum_errors);
@@ -86,14 +86,14 @@ int main(void)
         matrix_mult_scalar(gradient_bias, learning_rate, scaled_gradient_bias);
         matrix_sub(bias, scaled_gradient_bias, bias);
 
-        if (epoch % 100 == 0 || epoch == epochs - 1) {
+        if (epoch % 100 == 0 || epoch == epochs - 1)
+        {
             printf(
                 "Epoch %zu | Loss: %.10f | Weight: %.6f | Bias: %.6f\n",
                 epoch,
                 total_loss,
                 matrix_get(weight, 0, 0),
-                matrix_get(bias, 0, 0)
-            );
+                matrix_get(bias, 0, 0));
         }
     }
 
