@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "matrix.h"
 
@@ -60,11 +61,12 @@ void matrix_fill(matrix *m, double value)
 
 void matrix_fill_random(matrix *m, double min, double max)
 {
+    srand((unsigned int)time(NULL));
     for (uint32_t x_row = 0; x_row < m->rows; x_row++)
     {
         for (uint32_t y_col = 0; y_col < m->cols; y_col++)
         {
-            double random_value = ((double)rand() / RAND_MAX) * (max - min) + min;
+            double random_value = min + ((double)rand() / RAND_MAX) * (max - min);
             matrix_set(m, x_row, y_col, random_value);
         }
     }

@@ -2,8 +2,6 @@
 #include "matrix.h"
 #include "mini_ml.h"
 
-extern training_conf_t *train_conf;
-
 int main(void)
 {
     double x_values[][2] = {
@@ -27,20 +25,19 @@ int main(void)
         }
         matrix_set(y, i, 0, y_values[i]);
     }
+
+    uint32_t layers[] = {2, 4, 1};
+    size_t num_layers = sizeof(layers) / sizeof(layers[0]);
+    activations_t activations[] = {RELU, SIGMOID};
+
     model_conf_t model_conf = {
-        .num_layers = 3,
-        .layers = (uint32_t[]){2, 4, 1},
-        .activations = (activations_t[]){RELU, SIGMOID}};
+        .num_layers = num_layers,
+        .layers = layers,
+        .activations = activations};
     model_t model = {
         .conf = &model_conf,
-        .weights = (matrix *[]){matrix_create(2, 4), matrix_create(4, 1)},
-        .biases = (matrix *[]){matrix_create(1, 4), matrix_create(1, 1)}};
-
-    matrix_fill_random(model.weights[0], -1.0, 1.0);
-    matrix_fill_random(model.weights[1], -1.0, 1.0);
-    matrix_fill(model.biases[0], 0.0);
-    matrix_fill(model.biases[1], 0.0);
-
+        .weights = NULL,
+        .biases = NULL};
     training_conf_t conf = {
         .model = &model,
         .X = X,
@@ -49,10 +46,18 @@ int main(void)
         .optimizer = SGD,
         .learning_rate = 0.1,
         .epochs = 6000};
-    train_conf = &conf;
-    model_fit();
 
-    matrix *predictions = model_predict(X);
+    training_config(&conf);
+    model_t *trained_model = model_fit();
+    if (trained_model == NULL)
+    {
+        fprintf(stderr, "Error: Model training failed.\n");
+        matrix_free(X);
+        matrix_free(y);
+        return 1;
+    }
+
+    matrix *predictions = model_predict(trained_model, X);
     printf("Predictions:\n");
     for (uint32_t i = 0; i < predictions->rows; i++)
     {
@@ -60,12 +65,9 @@ int main(void)
                matrix_get(X, i, 0), matrix_get(X, i, 1),
                matrix_get(predictions, i, 0));
     }
+    model_free(trained_model);
+    matrix_free(predictions);
 
-    model_clear_cache();
-    matrix_free(model.weights[0]);
-    matrix_free(model.weights[1]);
-    matrix_free(model.biases[0]);
-    matrix_free(model.biases[1]);
     matrix_free(X);
     matrix_free(y);
     return 0;
