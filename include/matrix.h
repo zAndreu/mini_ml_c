@@ -40,7 +40,7 @@ double matrix_mean(const matrix *m);
 void matrix_print(const matrix *m);
 
 // Auxiliares
-uint32_t matrix_size(const matrix *m);
+size_t matrix_size(const matrix *m);
 
 #endif // MATRIX_H
        // End of file

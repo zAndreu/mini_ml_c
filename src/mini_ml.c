@@ -112,6 +112,11 @@ matrix *binary_cross_entropy_derivative(matrix *y_true, matrix *y_pred)
             {
                 y_p = 1.0 - epsilon;
             }
+            double denom = y_p * (1.0 - y_p);
+            if (denom < epsilon)
+            {
+                denom = epsilon;
+            }
             double value = scale * ((y_p - y_t) / ((y_p) * (1.0 - y_p)));
             matrix_set(derivative, idx, idy, value);
         }
@@ -192,7 +197,7 @@ static void allocate_memory(void)
 {
     if (train_conf == NULL)
     {
-        fprintf(stderr, "Error: No training configuration is set.\n");
+        fprintf(stderr, "Error: No se estableció una configuración de entrenamiento.\n");
         return;
     }
 
@@ -203,14 +208,14 @@ static void allocate_memory(void)
 
     if (train_conf->model->conf == NULL || train_conf->model->conf->num_layers < 2)
     {
-        fprintf(stderr, "Error: Invalid model configuration for setup.\n");
+        fprintf(stderr, "Error: Configuración de modelo inválida para la asignación de memoria.\n");
         return;
     }
 
     size_t layer_count = train_conf->model->conf->num_layers - 1;
     if (!allocate_buffers(layer_count))
     {
-        fprintf(stderr, "Error: Could not allocate model work buffers.\n");
+        fprintf(stderr, "Error: No se pudo asignar la memoria para los buffers de trabajo del modelo.\n");
         return;
     }
 
@@ -219,7 +224,7 @@ static void allocate_memory(void)
         model_t *model = train_conf->model;
         if (model == NULL || model->conf == NULL || model->conf->num_layers < 2)
         {
-            fprintf(stderr, "Error: Invalid model configuration for parameter allocation.\n");
+            fprintf(stderr, "Error: Configuración de modelo inválida para la asignación de parámetros.\n");
             return;
         }
 
@@ -230,7 +235,7 @@ static void allocate_memory(void)
             model->biases = calloc(layer_count, sizeof(matrix *));
             if (model->weights == NULL || model->biases == NULL)
             {
-                fprintf(stderr, "Error: Could not allocate memory for weights and biases.\n");
+                fprintf(stderr, "Error: No se pudo asignar memoria para los pesos y sesgos del modelo.\n");
                 return;
             }
             for (size_t layer_idx = 0; layer_idx < layer_count; layer_idx++)
@@ -241,10 +246,10 @@ static void allocate_memory(void)
                 model->biases[layer_idx] = matrix_create(1, output_size);
                 if (model->weights[layer_idx] == NULL || model->biases[layer_idx] == NULL)
                 {
-                    fprintf(stderr, "Error: Could not allocate memory for weight or bias matrix of layer %zu.\n", layer_idx);
+                    fprintf(stderr, "Error: No se pudo asignar memoria para la matriz de pesos o sesgos de la capa %zu.\n", layer_idx);
                     return;
                 }
-                matrix_fill_random(model->weights[layer_idx], -1.0, 1.0);
+                matrix_fill_random(model->weights[layer_idx], -0.20, 1.0);
                 matrix_fill(model->biases[layer_idx], 0.0);
             }
         }
@@ -255,7 +260,7 @@ void training_config(training_conf_t *config)
 {
     if (config == NULL)
     {
-        fprintf(stderr, "Error: Training configuration cannot be NULL.\n");
+        fprintf(stderr, "Error: Configuración de entrenamiento no puede ser NULL.\n");
         return;
     }
 
@@ -270,21 +275,21 @@ static matrix *model_forward(matrix *X)
 {
     if (train_conf == NULL || train_conf->model == NULL || X == NULL)
     {
-        fprintf(stderr, "Error: No model is available for prediction.\n");
+        fprintf(stderr, "Error: No se puede realizar la predicción sin una configuración de entrenamiento válida, un modelo válido o datos de entrada.\n");
         return NULL;
     }
 
     model_t *model = train_conf->model;
     if (model->conf == NULL || model->conf->num_layers < 2)
     {
-        fprintf(stderr, "Error: The model must have at least two layers.\n");
+        fprintf(stderr, "Error: Configuración de modelo inválida para la predicción.\n");
         return NULL;
     }
 
     size_t layer_count = model->conf->num_layers - 1;
     if (!allocate_buffers(layer_count))
     {
-        fprintf(stderr, "Error: Could not allocate model work buffers for prediction.\n");
+        fprintf(stderr, "Error: No se pudo asignar la memoria para los buffers de trabajo del modelo.\n");
         return NULL;
     }
 
@@ -326,7 +331,7 @@ static matrix *model_forward(matrix *X)
         }
         else
         {
-            fprintf(stderr, "Error: Unknown activation function.\n");
+            fprintf(stderr, "Error: Función de activación desconocida.\n");
         }
 
         current_input = activated;
@@ -340,7 +345,7 @@ static double model_loss(matrix *y_true, matrix *y_pred, matrix *loss_derivative
 {
     if (train_conf == NULL)
     {
-        fprintf(stderr, "Error: No training configuration available.\n");
+        fprintf(stderr, "Error: No se estableció una configuración de entrenamiento.\n");
         return -1.0;
     }
 
@@ -361,7 +366,7 @@ static double model_loss(matrix *y_true, matrix *y_pred, matrix *loss_derivative
     }
     else
     {
-        fprintf(stderr, "Error: Unknown loss function.\n");
+        fprintf(stderr, "Error: Función de pérdida desconocida.\n");
         return -1.0;
     }
 
@@ -372,14 +377,14 @@ static void model_backward(matrix *loss_derivative)
 {
     if (train_conf == NULL || train_conf->model == NULL)
     {
-        fprintf(stderr, "Error: No model is available for backpropagation.\n");
+        fprintf(stderr, "Error: No se puede realizar la retropropagación sin una configuración de entrenamiento válida o un modelo válido.\n");
         return;
     }
 
     if (loss_derivative == NULL || train_conf->model->conf == NULL ||
         train_conf->model->conf->num_layers < 2)
     {
-        fprintf(stderr, "Error: Invalid model or loss derivative.\n");
+        fprintf(stderr, "Error: Configuración de modelo inválida para la retropropagación.\n");
         return;
     }
 
@@ -399,13 +404,15 @@ static void model_backward(matrix *loss_derivative)
         {
             for (uint32_t col = 0; col < z->cols; col++)
             {
-                double derivative = train_conf->model->conf->activations[layer_idx] == RELU
-                                        ? relu_derivative(matrix_get(z, row, col))
-                                        : sigmoid_derivative(matrix_get(z, row, col));
-                matrix_set(dZ, row, col, matrix_get(loss_derivative, row, col) * derivative);
+                double derivative = train_conf->model->conf->activations[layer_idx] == RELU ? relu_derivative(matrix_get(z, row, col)) : sigmoid_derivative(matrix_get(z, row, col));
+                if (!isfinite(derivative))
+                {
+                    derivative = 0.0;
+                }
+                double value = matrix_get(loss_derivative, row, col) * derivative;
+                matrix_set(dZ, row, col, value);
             }
         }
-
         matrix *layer_input = layer_idx == 0 ? train_conf->X : out[layer_idx - 1];
         matrix *input_transposed = matrix_create(layer_input->cols, layer_input->rows);
         if (input_transposed == NULL || !matrix_transpose(layer_input, input_transposed))
@@ -469,13 +476,13 @@ static void model_optimize(void)
 {
     if (train_conf == NULL || train_conf->model == NULL)
     {
-        fprintf(stderr, "Error: No model is available for optimization.\n");
+        fprintf(stderr, "Error: Modelo o configuración de entrenamiento no validos.\n");
         return;
     }
 
     if (train_conf->learning_rate <= 0.0)
     {
-        fprintf(stderr, "Error: Learning rate must be positive.\n");
+        fprintf(stderr, "Error: La tasa de aprendizaje debe ser positiva.\n");
         return;
     }
     size_t num_layers = train_conf->model->conf->num_layers;
@@ -512,10 +519,11 @@ static void model_optimize(void)
          * Y un contador de iteraciones t
          */
         fprintf(stderr, "Error: ADAM optimizer is not implemented yet.\n");
+        abort(); // Terminar el programa si se intenta usar ADAM
     }
     else
     {
-        fprintf(stderr, "Error: Unknown optimizer.\n");
+        fprintf(stderr, "Error: Optimizador no válido.\n");
     }
 }
 
@@ -524,7 +532,7 @@ model_t *model_fit(void)
     allocate_memory();
     if (train_conf == NULL || train_conf->model == NULL)
     {
-        fprintf(stderr, "Error: No model is available for training.\n");
+        fprintf(stderr, "Error: Configuración de entrenamiento o modelo no válidos.\n");
         free_buffers();
         train_conf = NULL;
         return NULL;
@@ -535,7 +543,7 @@ model_t *model_fit(void)
         matrix *predictions = model_forward(train_conf->X);
         if (predictions == NULL)
         {
-            fprintf(stderr, "Error: prediction failed during training.\n");
+            fprintf(stderr, "Error: La predicción falló durante el entrenamiento.\n");
             free_buffers();
             train_conf = NULL;
             return NULL;

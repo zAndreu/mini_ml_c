@@ -1,8 +1,12 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+
 #include "matrix.h"
 
 int main(void)
 {
+    srand((unsigned int)time(NULL));
     double x_values[] = {
         0.0,
         1.0,

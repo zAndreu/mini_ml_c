@@ -1,10 +1,10 @@
 CC = gcc
 
 CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -Iinclude -O3 -march=native -ffast-math -fopenmp
-LDFLAGS = -fopenmp -lm
+DLCFLAGS = -fopenmp -lm
 
 # Flags para depuracion
-DEBUG_FLAGS = -Wall -Wextra -Wpedantic -std=c11 -Iinclude -g -O0 -fsanitize=address,undefined
+DFLAGS = -Wall -Wextra -Wpedantic -std=c11 -Iinclude -g -O0 -fsanitize=address,undefined
 DLDFLAGS = -fsanitize=address,undefined -lm
 
 TARGET = bin/test
@@ -17,7 +17,7 @@ all: $(TARGET)
 
 $(TARGET): $(SRCS) $(HEADERS)
 	mkdir -p bin
-	$(CC) $(CFLAGS) $(SRCS) -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS) $(SRCS) -o $@ $(DLCFLAGS)
 
 run: $(TARGET)
 	./$(TARGET)

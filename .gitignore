@@ -12,6 +12,7 @@
 *.dll
 *.a
 *.lib
+*.vscode
 
 build/
 Build/

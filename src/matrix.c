@@ -17,6 +17,21 @@ matrix *matrix_create(uint32_t rows, uint32_t cols)
     {
         return NULL;
     }
+    if ((size_t)rows > SIZE_MAX / (size_t)cols)
+    {
+        return NULL;
+    }
+    size_t count = (size_t)rows * (size_t)cols;
+    if (count > SIZE_MAX / sizeof(double))
+    {
+        return NULL;
+    }
+    size_t size = count * sizeof(double);
+    if (size > SIZE_MAX - 63)
+    {
+        return NULL;
+    }
+
     matrix *m = (matrix *)malloc(sizeof(matrix));
     if (m == NULL)
     {
@@ -24,12 +39,15 @@ matrix *matrix_create(uint32_t rows, uint32_t cols)
     }
     m->rows = rows;
     m->cols = cols;
-    m->data = (double *)malloc(rows * cols * sizeof(double));
+    size_t aligned_size = (size + 63) & ~(size_t)63;
+
+    m->data = (double *)aligned_alloc(64, aligned_size);
     if (m->data == NULL)
     {
         free(m);
         return NULL;
     }
+    memset(m->data, 0, aligned_size);
     return m;
 }
 
@@ -45,96 +63,180 @@ void matrix_free(matrix *m)
 
 double matrix_get(const matrix *m, uint32_t row, uint32_t col)
 {
+    if (m == NULL || row >= m->rows || col >= m->cols)
+    {
+        return 0.0f;
+    }
     return m->data[row * m->cols + col];
 }
 
 void matrix_set(matrix *m, uint32_t row, uint32_t col, double value)
 {
+    if (m == NULL || row >= m->rows || col >= m->cols)
+    {
+        return;
+    }
     m->data[row * m->cols + col] = value;
 }
 
 void matrix_fill(matrix *m, double value)
 {
-    for (uint32_t x_row = 0; x_row < m->rows; x_row++)
+    if (m == NULL)
     {
-        for (uint32_t y_col = 0; y_col < m->cols; y_col++)
-        {
-            matrix_set(m, x_row, y_col, value);
-        }
+        return;
+    }
+    double *restrict data_ptr = m->data;
+    const size_t total_elements = (size_t)m->rows * m->cols;
+
+    for (size_t i = 0; i < total_elements; i++)
+    {
+        data_ptr[i] = value;
     }
 }
 
 void matrix_fill_random(matrix *m, double min, double max)
 {
-    for (uint32_t x_row = 0; x_row < m->rows; x_row++)
+    if (m == NULL)
     {
-        for (uint32_t y_col = 0; y_col < m->cols; y_col++)
-        {
-            double random_value = min + ((double)rand() / RAND_MAX) * (max - min);
-            matrix_set(m, x_row, y_col, random_value);
-        }
+        return;
+    }
+    double *restrict data_ptr = m->data;
+    const size_t total_elements = (size_t)m->rows * m->cols;
+    const double range = max - min;
+
+    unsigned int seed = (unsigned int)(time(NULL) ^ (uintptr_t)&seed);
+
+    for (size_t i = 0; i < total_elements; i++)
+    {
+        data_ptr[i] = min + ((double)rand_r(&seed) / (double)RAND_MAX) * range;
     }
 }
 
 bool matrix_copy(const matrix *src, matrix *dest)
 {
+    if (src == NULL || dest == NULL)
+    {
+        return false;
+    }
     if (src->rows != dest->rows || src->cols != dest->cols)
     {
         return false;
     }
-    memcpy(dest->data, src->data, src->rows * src->cols * sizeof(double));
+    if (src == dest || src->data == dest->data)
+    {
+        return true;
+    }
+    memcpy(dest->data, src->data, (size_t)src->rows * src->cols * sizeof(double));
     return true;
 }
 
 // Operaciones con las matrices
 bool matrix_add(const matrix *a, const matrix *b, matrix *result)
 {
+    if (a == NULL || b == NULL || result == NULL)
+    {
+        return false;
+    }
     if (a->rows != b->rows || a->cols != b->cols || a->rows != result->rows || a->cols != result->cols)
     {
         return false;
     }
-    for (uint32_t x_row = 0; x_row < a->rows; x_row++)
+    if (result->data == a->data || result->data == b->data)
     {
-        for (uint32_t y_col = 0; y_col < a->cols; y_col++)
-        {
-            matrix_set(result, x_row, y_col, matrix_get(a, x_row, y_col) + matrix_get(b, x_row, y_col));
-        }
+        return false;
+    }
+    const size_t total_elements = (size_t)a->rows * a->cols;
+    const double *restrict pa = a->data;
+    const double *restrict pb = b->data;
+    double *restrict pr = result->data;
+    for (size_t i = 0; i < total_elements; i++)
+    {
+        pr[i] = pa[i] + pb[i];
     }
     return true;
 }
 
 bool matrix_sub(const matrix *a, const matrix *b, matrix *result)
 {
+    if (a == NULL || b == NULL || result == NULL)
+    {
+        return false;
+    }
     if (a->rows != b->rows || a->cols != b->cols || a->rows != result->rows || a->cols != result->cols)
     {
         return false;
     }
-    for (uint32_t x_row = 0; x_row < a->rows; x_row++)
-    {
-        for (uint32_t y_col = 0; y_col < a->cols; y_col++)
-        {
-            matrix_set(result, x_row, y_col, matrix_get(a, x_row, y_col) - matrix_get(b, x_row, y_col));
-        }
-    }
-    return true;
-}
-bool matrix_mult_scalar(const matrix *m, double scalar, matrix *result)
-{
-    if (m->rows != result->rows || m->cols != result->cols)
+    if (result->data == a->data || result->data == b->data)
     {
         return false;
     }
-    for (uint32_t x_row = 0; x_row < result->rows; x_row++)
+
+    const size_t total_elements = (size_t)a->rows * a->cols;
+    const double *restrict pa = a->data;
+    const double *restrict pb = b->data;
+    double *restrict pr = result->data;
+
+    for (size_t i = 0; i < total_elements; i++)
     {
-        for (uint32_t y_col = 0; y_col < result->cols; y_col++)
-        {
-            matrix_set(result, x_row, y_col, matrix_get(m, x_row, y_col) * scalar);
-        }
+        pr[i] = pa[i] - pb[i];
     }
     return true;
 }
 
-static inline void micro_mult(const double *__restrict A, const double *__restrict Bt, double *__restrict C, uint32_t K_eff, uint32_t stride_A, uint32_t stride_Bt, uint32_t stride_C, uint32_t mr_eff, uint32_t nr_eff)
+bool matrix_hadamard(const matrix *a, const matrix *b, matrix *result)
+{
+    if (a == NULL || b == NULL || result == NULL)
+    {
+        return false;
+    }
+    if (a->rows != b->rows || a->cols != b->cols ||
+        a->rows != result->rows || a->cols != result->cols)
+    {
+        return false;
+    }
+    if (result->data == a->data || result->data == b->data)
+    {
+        return false;
+    }
+
+    const size_t total_elements = (size_t)a->rows * a->cols;
+    const double *restrict pa = a->data;
+    const double *restrict pb = b->data;
+    double *restrict pr = result->data;
+    for (size_t i = 0; i < total_elements; i++)
+    {
+        pr[i] = pa[i] * pb[i];
+    }
+    return true;
+}
+
+bool matrix_mult_scalar(const matrix *m, double scalar, matrix *result)
+{
+    if (m == NULL || result == NULL)
+    {
+        return false;
+    }
+    if (m->rows != result->rows || m->cols != result->cols)
+    {
+        return false;
+    }
+    if (result->data == m->data)
+    {
+        return false;
+    }
+
+    const size_t total_elements = (size_t)m->rows * m->cols;
+    const double *restrict src = m->data;
+    double *restrict dst = result->data;
+
+    for (size_t i = 0; i < total_elements; i++)
+    {
+        dst[i] = src[i] * scalar;
+    }
+    return true;
+}
+
+static inline void micro_mult(const double *restrict A, const double *restrict Bt, double *restrict C, uint32_t K_eff, uint32_t stride_A, uint32_t stride_Bt, uint32_t stride_C, uint32_t mr_eff, uint32_t nr_eff)
 {
     double acc[DMR][DNR];
     memset(acc, 0, sizeof(acc));
@@ -163,13 +265,12 @@ static inline void micro_mult(const double *__restrict A, const double *__restri
 
 static bool multiply_block(const matrix *a, const matrix *bt, matrix *result)
 {
-    double *__restrict A = a->data;
-    double *__restrict Bt = bt->data;
-    double *__restrict C = result->data;
-
+    double *restrict A = a->data;
+    double *restrict Bt = bt->data;
+    double *restrict C = result->data;
     memset(C, 0, result->rows * result->cols * sizeof(double));
 
-    // #pragma omp parallel for schedule(static) // No me gusta depender de esto ya que lo cuento como ayuda externa a mi.
+#pragma omp parallel for schedule(static) // No me gusta depender de esto ya que lo cuento como ayuda externa a mi.
     for (uint32_t ii = 0; ii < a->rows; ii += DBLOCK_L2)
     {
         uint32_t row_max = (ii + DBLOCK_L2 < a->rows) ? ii + DBLOCK_L2 : a->rows;
@@ -218,10 +319,10 @@ bool matrix_mult(const matrix *a, const matrix *b, matrix *result)
 
 static bool transpose_block(const matrix *m, matrix *result)
 {
-    double *__restrict src = m->data;
-    double *__restrict dst = result->data;
+    double *restrict src = m->data;
+    double *restrict dst = result->data;
 
-    // #pragma omp parallel for schedule(static) // No me gusta depender de esto ya que lo cuento como ayuda externa a mi.
+#pragma omp parallel for schedule(static) // No me gusta depender de esto ya que lo cuento como ayuda externa a mi.
     for (uint32_t ii = 0; ii < m->rows; ii += DBLOCK_L2)
     {
         uint32_t row_max = (ii + DBLOCK_L2 < m->rows) ? ii + DBLOCK_L2 : m->rows;
@@ -255,33 +356,58 @@ bool matrix_transpose(const matrix *m, matrix *result)
 }
 
 // Utilidades
-matrix *matrix_sum_rows(const matrix *m) // Rows siempre igual a 1
+matrix *matrix_sum_rows(const matrix *m)
 {
-    matrix *result = matrix_create(1, m->cols);
-    double suma_columna;
-    for (uint32_t y_col = 0; y_col < m->cols; y_col++)
+    if (m == NULL)
     {
-        suma_columna = 0;
-        for (uint32_t x_row = 0; x_row < m->rows; x_row++)
-        {
-            suma_columna += matrix_get(m, x_row, y_col);
-        }
-        matrix_set(result, 0, y_col, suma_columna);
+        return NULL;
     }
+
+    matrix *result = matrix_create(1, m->cols);
+    if (!result)
+    {
+        return NULL;
+    }
+
+    double *restrict result_ptr = result->data;
+    const double *restrict data_ptr = m->data;
+    const uint32_t rows = m->rows;
+    const uint32_t cols = m->cols;
+
+    for (uint32_t r = 0; r < rows; r++)
+    {
+        const size_t offset = (size_t)r * cols;
+        for (uint32_t c = 0; c < cols; c++)
+        {
+            result_ptr[c] += data_ptr[offset + c];
+        }
+    }
+
     return result;
 }
 
 bool matrix_add_row_vector(matrix *m, const matrix *row_vector)
 {
+    if (m == NULL || row_vector == NULL)
+    {
+        return false;
+    }
     if (row_vector->rows != 1 || m->cols != row_vector->cols)
     {
         return false;
     }
-    for (uint32_t x_row = 0; x_row < m->rows; x_row++)
+
+    double *restrict data_ptr = m->data;
+    const double *restrict row_vector_ptr = row_vector->data;
+    const uint32_t rows = m->rows;
+    const uint32_t cols = m->cols;
+
+    for (uint32_t r = 0; r < rows; r++)
     {
-        for (uint32_t y_col = 0; y_col < m->cols; y_col++)
+        const size_t offset = (size_t)r * cols;
+        for (uint32_t c = 0; c < cols; c++)
         {
-            matrix_set(m, x_row, y_col, matrix_get(m, x_row, y_col) + matrix_get(row_vector, 0, y_col));
+            data_ptr[offset + c] += row_vector_ptr[c];
         }
     }
     return true;
@@ -289,7 +415,54 @@ bool matrix_add_row_vector(matrix *m, const matrix *row_vector)
 
 void matrix_apply_function(matrix *m, double (*func)(double))
 {
-    if (func == NULL)
+    if (m == NULL || func == NULL)
+    {
+        return;
+    }
+    double *restrict data_ptr = m->data;
+    const size_t total_elements = (size_t)m->rows * m->cols;
+
+    for (size_t i = 0; i < total_elements; i++)
+    {
+        data_ptr[i] = func(data_ptr[i]);
+    }
+}
+
+double matrix_sum(const matrix *m)
+{
+    if (m == NULL)
+    {
+        return 0.0f;
+    }
+
+    double sum = 0.0f;
+    const size_t total_elements = (size_t)m->rows * m->cols;
+    const double *restrict data_ptr = m->data;
+
+    for (size_t i = 0; i < total_elements; i++)
+    {
+        sum += data_ptr[i];
+    }
+    return sum;
+}
+
+double matrix_mean(const matrix *m)
+{
+    if (m == NULL)
+    {
+        return 0.0f;
+    }
+    size_t sz = matrix_size(m);
+    if (sz == 0)
+    {
+        return 0.0f;
+    }
+    return matrix_sum(m) / (double)sz;
+}
+
+void matrix_print(const matrix *m)
+{
+    if (m == NULL)
     {
         return;
     }
@@ -297,62 +470,19 @@ void matrix_apply_function(matrix *m, double (*func)(double))
     {
         for (uint32_t y_col = 0; y_col < m->cols; y_col++)
         {
-            matrix_set(m, x_row, y_col, func(matrix_get(m, x_row, y_col)));
-        }
-    }
-}
-
-bool matrix_hadamard(const matrix *a, const matrix *b, matrix *result)
-{
-    if (a->rows != b->rows || a->cols != b->cols)
-    {
-        return false;
-    }
-    if (a->rows != result->rows || a->cols != result->cols)
-    {
-        return false;
-    }
-    for (uint32_t x_row = 0; x_row < a->rows; x_row++)
-    {
-        for (uint32_t y_col = 0; y_col < a->cols; y_col++)
-        {
-            matrix_set(result, x_row, y_col, matrix_get(a, x_row, y_col) * matrix_get(b, x_row, y_col));
-        }
-    }
-    return true;
-}
-
-double matrix_sum(const matrix *m)
-{
-    double suma = 0;
-    for (uint32_t x_row = 0; x_row < m->rows; x_row++)
-    {
-        for (uint32_t y_col = 0; y_col < m->cols; y_col++)
-        {
-            suma += matrix_get(m, x_row, y_col);
-        }
-    }
-    return suma;
-}
-double matrix_mean(const matrix *m)
-{
-    return matrix_sum(m) / matrix_size(m);
-}
-void matrix_print(const matrix *m)
-{
-    for (uint32_t x_row = 0; x_row < m->rows; x_row++)
-    {
-        for (uint32_t y_col = 0; y_col < m->cols; y_col++)
-        {
-            printf("Elemento[%u,%u]: %f ", x_row, y_col, matrix_get(m, x_row, y_col));
+            printf("%f ", matrix_get(m, x_row, y_col));
         }
         printf("\n");
     }
 }
 
 // Auxiliares
-uint32_t matrix_size(const matrix *m)
+size_t matrix_size(const matrix *m)
 {
-    return m->rows * m->cols;
+    if (m == NULL)
+    {
+        return 0;
+    }
+    return (size_t)m->rows * m->cols;
 }
 // End of file

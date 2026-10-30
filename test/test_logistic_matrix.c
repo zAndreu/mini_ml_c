@@ -1,12 +1,10 @@
-// Fallos: No logra generalizar bien por falta de datos, para barreras muy pequeñas o muy altas no logra un correcto funcionamiento.
-
 #include <stdio.h>
 #include "matrix.h"
 #include "mini_ml.h"
 
 int main(void)
 {
-    const size_t samples = 255;
+    const size_t samples = 2048;
     const double max_value = 30.0;
     // Funcion a buscar: 2w1 + 3w2 + 5
     double barrier_num = 83.0;

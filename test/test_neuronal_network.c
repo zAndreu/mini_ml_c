@@ -1,11 +1,14 @@
 #include <stdio.h>
 #include <stddef.h>
+#include <stdlib.h>
+#include <time.h>
 
 #include "matrix.h"
 #include "mini_ml.h"
 
 int main(void)
 {
+    srand((unsigned int)time(NULL));
     double x_values[][2] = {
         {0.0, 0.0},
         {0.0, 1.0},
