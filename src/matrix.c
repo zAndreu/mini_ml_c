@@ -11,6 +11,8 @@ static const uint16_t DKC_L1 = 192;
 static const uint16_t DMR = 6;
 static const uint16_t DNR = 8;
 
+#define TRANSPOSE_TILE 32
+
 matrix *matrix_create(uint32_t rows, uint32_t cols)
 {
     if (rows == 0 || cols == 0)
@@ -319,22 +321,27 @@ bool matrix_mult(const matrix *a, const matrix *b, matrix *result)
 
 static bool transpose_block(const matrix *m, matrix *result)
 {
-    double *restrict src = m->data;
+    const double *restrict src = m->data;
     double *restrict dst = result->data;
+    const uint32_t rows = m->rows;
+    const uint32_t cols = m->cols;
 
-#pragma omp parallel for schedule(static) // No me gusta depender de esto ya que lo cuento como ayuda externa a mi.
-    for (uint32_t ii = 0; ii < m->rows; ii += DBLOCK_L2)
+#pragma omp parallel for schedule(static) if ((size_t)rows * cols > 32768)
+    for (uint32_t ii = 0; ii < rows; ii += TRANSPOSE_TILE)
     {
-        uint32_t row_max = (ii + DBLOCK_L2 < m->rows) ? ii + DBLOCK_L2 : m->rows;
-        for (uint32_t jj = 0; jj < m->cols; jj += DBLOCK_L2)
+        const uint32_t row_max = (ii + TRANSPOSE_TILE < rows) ? ii + TRANSPOSE_TILE : rows;
+
+        for (uint32_t jj = 0; jj < cols; jj += TRANSPOSE_TILE)
         {
-            uint32_t col_max = (jj + DBLOCK_L2 < m->cols) ? jj + DBLOCK_L2 : m->cols;
+            const uint32_t col_max = (jj + TRANSPOSE_TILE < cols) ? jj + TRANSPOSE_TILE : cols;
+
             for (uint32_t i = ii; i < row_max; i++)
             {
-                uint32_t row_offset = i * m->cols;
+                const double *src_row = &src[i * cols];
+
                 for (uint32_t j = jj; j < col_max; j++)
                 {
-                    dst[j * m->rows + i] = src[row_offset + j];
+                    dst[j * rows + i] = src_row[j];
                 }
             }
         }
@@ -344,15 +351,19 @@ static bool transpose_block(const matrix *m, matrix *result)
 
 bool matrix_transpose(const matrix *m, matrix *result)
 {
+    if (m == NULL || result == NULL)
+    {
+        return false;
+    }
     if (m->rows != result->cols || m->cols != result->rows)
     {
         return false;
     }
-    if (!transpose_block(m, result))
+    if (result->data == m->data)
     {
         return false;
     }
-    return true;
+    return transpose_block(m, result);
 }
 
 // Utilidades
