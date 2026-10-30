@@ -326,7 +326,7 @@ static bool transpose_block(const matrix *m, matrix *result)
     const uint32_t rows = m->rows;
     const uint32_t cols = m->cols;
 
-#pragma omp parallel for schedule(static) if ((size_t)rows * cols > 32768)
+#pragma omp parallel for schedule(static)
     for (uint32_t ii = 0; ii < rows; ii += TRANSPOSE_TILE)
     {
         const uint32_t row_max = (ii + TRANSPOSE_TILE < rows) ? ii + TRANSPOSE_TILE : rows;
