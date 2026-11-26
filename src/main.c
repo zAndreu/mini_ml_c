@@ -3,10 +3,10 @@
 
 int main(void)
 {
-    matrix *m1 = matrix_create(2048, 2048);
-    matrix *m2 = matrix_create(2048, 2048);
-    matrix_fill_random(m1, -2048.0, 2048.0);
-    matrix_fill_random(m2, -2048.0, 2048.0);
+    matrix *m1 = matrix_create(8192, 8192);
+    matrix *m2 = matrix_create(8192, 8192);
+    matrix_fill_random(m1, -8192.0, 8192.0);
+    matrix_fill_random(m2, -8192.0, 8192.0);
 
     matrix *result = matrix_create(m1->rows, m2->cols);
     if (matrix_mult(m1, m2, result))

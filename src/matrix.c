@@ -6,10 +6,12 @@
 
 #include "matrix.h"
 
-static const uint16_t DBLOCK_L2 = 128;
-static const uint16_t DKC_L1 = 192;
-static const uint16_t DMR = 6;
-static const uint16_t DNR = 8;
+#define MR 6
+#define NR 32
+
+#define KC 192
+#define MC 192
+#define NC 256
 
 #define TRANSPOSE_TILE 32
 
@@ -238,58 +240,188 @@ bool matrix_mult_scalar(const matrix *m, double scalar, matrix *result)
     return true;
 }
 
-static inline void micro_mult(const double *restrict A, const double *restrict Bt, double *restrict C, uint32_t K_eff, uint32_t stride_A, uint32_t stride_Bt, uint32_t stride_C, uint32_t mr_eff, uint32_t nr_eff)
+static inline void pack_A(const double *restrict src,
+                          double *restrict dst,
+                          uint32_t mr_eff,
+                          uint32_t k_eff,
+                          uint32_t stride_src)
 {
-    double acc[DMR][DNR];
-    memset(acc, 0, sizeof(acc));
-    for (uint32_t i = 0; i < mr_eff; i++)
+    for (uint32_t i = 0; i < mr_eff; ++i)
     {
-        for (uint32_t j = 0; j < nr_eff; j++)
-        {
-            double sum = 0.0;
-            for (uint32_t k = 0; k < K_eff; k++)
-            {
-                sum += A[i * stride_A + k] * Bt[j * stride_Bt + k];
-            }
+        memcpy(dst + (size_t)i * k_eff,
+               src + (size_t)i * stride_src,
+               (size_t)k_eff * sizeof(*dst));
+    }
+}
 
-            acc[i][j] = sum;
+static inline void pack_B(const double *restrict src,
+                          double *restrict dst,
+                          uint32_t nr_eff,
+                          uint32_t k_eff,
+                          uint32_t stride_src)
+{
+    for (uint32_t k = 0; k < k_eff; ++k)
+    {
+        memcpy(dst + (size_t)k * NR,
+               src + (size_t)k * stride_src,
+               (size_t)nr_eff * sizeof(*dst));
+    }
+}
+
+static inline void micro_mult(const double *restrict PackA,
+                              const double *restrict PackB,
+                              double *restrict C,
+                              uint32_t k_eff,
+                              uint32_t stride_C,
+                              uint32_t mr_eff,
+                              uint32_t nr_eff,
+                              bool is_first_k)
+{
+    double acc[MR][NR];
+
+    if (is_first_k)
+    {
+        for (uint32_t i = 0; i < mr_eff; ++i)
+        {
+            for (uint32_t j = 0; j < nr_eff; ++j)
+            {
+                acc[i][j] = 0.0;
+            }
+        }
+    }
+    else
+    {
+        for (uint32_t i = 0; i < mr_eff; ++i)
+        {
+            const double *restrict c_row =
+                C + (size_t)i * stride_C;
+
+            for (uint32_t j = 0; j < nr_eff; ++j)
+            {
+                acc[i][j] = c_row[j];
+            }
         }
     }
 
-    for (uint32_t i = 0; i < mr_eff; i++)
+    for (uint32_t i = 0; i < mr_eff; ++i)
     {
-        for (uint32_t j = 0; j < nr_eff; j++)
+        const double *restrict a_row =
+            PackA + (size_t)i * k_eff;
+
+        double *restrict acc_row = acc[i];
+
+        for (uint32_t k = 0; k < k_eff; ++k)
         {
-            C[i * stride_C + j] += acc[i][j];
+            const double a_ik = a_row[k];
+
+            const double *restrict b_row =
+                PackB + (size_t)k * NR;
+
+            for (uint32_t j = 0; j < nr_eff; ++j)
+            {
+                acc_row[j] += a_ik * b_row[j];
+            }
+        }
+    }
+
+    for (uint32_t i = 0; i < mr_eff; ++i)
+    {
+        double *restrict c_row =
+            C + (size_t)i * stride_C;
+
+        const double *restrict acc_row = acc[i];
+
+        for (uint32_t j = 0; j < nr_eff; ++j)
+        {
+            c_row[j] = acc_row[j];
         }
     }
 }
 
-static bool multiply_block(const matrix *a, const matrix *bt, matrix *result)
+static bool multiply_block(const matrix *a,
+                           const matrix *b,
+                           matrix *result)
 {
-    double *restrict A = a->data;
-    double *restrict Bt = bt->data;
+    const double *restrict A = a->data;
+    const double *restrict B = b->data;
     double *restrict C = result->data;
-    memset(C, 0, result->rows * result->cols * sizeof(double));
 
-#pragma omp parallel for schedule(static) // No me gusta depender de esto ya que lo cuento como ayuda externa a mi.
-    for (uint32_t ii = 0; ii < a->rows; ii += DBLOCK_L2)
+    const uint32_t rows_A = a->rows;
+    const uint32_t cols_A = a->cols;
+    const uint32_t cols_B = b->cols;
+
+#pragma omp parallel for collapse(2) schedule(static) if ((size_t)rows_A * cols_B > 65536u)
+    for (uint32_t ii = 0; ii < rows_A; ii += MC)
     {
-        uint32_t row_max = (ii + DBLOCK_L2 < a->rows) ? ii + DBLOCK_L2 : a->rows;
-        for (uint32_t jj = 0; jj < bt->rows; jj += DBLOCK_L2)
+        for (uint32_t jj = 0; jj < cols_B; jj += NC)
         {
-            uint32_t col_max = (jj + DBLOCK_L2 < bt->rows) ? jj + DBLOCK_L2 : bt->rows;
-            for (uint32_t kk = 0; kk < a->cols; kk += DKC_L1)
+            double PackA[MR * KC] __attribute__((aligned(64)));
+            double PackB[NC * KC] __attribute__((aligned(64)));
+
+            const uint32_t rows_remaining = rows_A - ii;
+            const uint32_t cols_remaining = cols_B - jj;
+
+            const uint32_t row_max =
+                (rows_remaining < MC) ? rows_A : ii + MC;
+
+            const uint32_t col_max =
+                (cols_remaining < NC) ? cols_B : jj + NC;
+
+            for (uint32_t kk = 0; kk < cols_A; kk += KC)
             {
-                uint32_t k_max = (kk + DKC_L1 < a->cols) ? kk + DKC_L1 : a->cols;
-                uint32_t k_eff = k_max - kk;
-                for (uint32_t i = ii; i < row_max; i += DMR)
+                const uint32_t k_remaining = cols_A - kk;
+
+                const uint32_t k_eff =
+                    (k_remaining < KC) ? k_remaining : KC;
+
+                for (uint32_t j = jj; j < col_max; j += NR)
                 {
-                    uint32_t mr_eff = (i + DMR < row_max) ? DMR : (row_max - i);
-                    for (uint32_t j = jj; j < col_max; j += DNR)
+                    const uint32_t nr_eff =
+                        ((col_max - j) < NR)
+                            ? (col_max - j)
+                            : NR;
+
+                    double *restrict packed_b_panel =
+                        PackB + (size_t)(j - jj) * KC;
+
+                    pack_B(B + (size_t)kk * cols_B + j,
+                           packed_b_panel,
+                           nr_eff,
+                           k_eff,
+                           cols_B);
+                }
+
+                for (uint32_t i = ii; i < row_max; i += MR)
+                {
+                    const uint32_t mr_eff =
+                        ((row_max - i) < MR)
+                            ? (row_max - i)
+                            : MR;
+
+                    pack_A(A + (size_t)i * cols_A + kk,
+                           PackA,
+                           mr_eff,
+                           k_eff,
+                           cols_A);
+
+                    for (uint32_t j = jj; j < col_max; j += NR)
                     {
-                        uint32_t nr_eff = (j + DNR < col_max) ? DNR : (col_max - j);
-                        micro_mult(&A[i * a->cols + kk], &Bt[j * bt->cols + kk], &C[i * result->cols + j], k_eff, a->cols, bt->cols, result->cols, mr_eff, nr_eff);
+                        const uint32_t nr_eff =
+                            ((col_max - j) < NR)
+                                ? (col_max - j)
+                                : NR;
+
+                        const double *restrict packed_b_panel =
+                            PackB + (size_t)(j - jj) * KC;
+
+                        micro_mult(PackA,
+                                   packed_b_panel,
+                                   C + (size_t)i * cols_B + j,
+                                   k_eff,
+                                   cols_B,
+                                   mr_eff,
+                                   nr_eff,
+                                   kk == 0);
                     }
                 }
             }
@@ -299,24 +431,54 @@ static bool multiply_block(const matrix *a, const matrix *bt, matrix *result)
     return true;
 }
 
-bool matrix_mult(const matrix *a, const matrix *b, matrix *result)
+bool matrix_mult(const matrix *a,
+                 const matrix *b,
+                 matrix *result)
 {
-    if (a->cols != b->rows)
+    if (a == NULL || b == NULL || result == NULL)
     {
         return false;
     }
-    if (a->rows != result->rows || b->cols != result->cols)
+
+    if ((a->rows != 0 && a->cols != 0 && a->data == NULL) ||
+        (b->rows != 0 && b->cols != 0 && b->data == NULL) ||
+        (result->rows != 0 &&
+         result->cols != 0 &&
+         result->data == NULL))
     {
         return false;
     }
-    matrix *b_transposed = matrix_create(b->cols, b->rows);
-    matrix_transpose(b, b_transposed);
-    if (!multiply_block(a, b_transposed, result))
+
+    if (a->cols != b->rows ||
+        result->rows != a->rows ||
+        result->cols != b->cols)
     {
         return false;
     }
-    matrix_free(b_transposed);
-    return true;
+
+    if (result->data == a->data ||
+        result->data == b->data)
+    {
+        return false;
+    }
+
+    if (result->rows == 0 || result->cols == 0)
+    {
+        return true;
+    }
+
+    if (a->cols == 0)
+    {
+        memset(result->data,
+               0,
+               (size_t)result->rows *
+                   result->cols *
+                   sizeof(*result->data));
+
+        return true;
+    }
+
+    return multiply_block(a, b, result);
 }
 
 static bool transpose_block(const matrix *m, matrix *result)
